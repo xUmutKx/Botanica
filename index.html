@@ -1,147 +1,121 @@
-<!doctype html>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import { OBJLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
+import { MTLLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/MTLLoader.js';
 
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Botanical Garden — 3D Viewer (Fixed Imports)</title>
-  <style>
-    html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Arial}
-    #app{display:flex;flex-direction:column;height:100vh}
-    #viewer{flex:1;min-height:320px;position:relative}
-    canvas{width:100%;height:100%;display:block}
-    #list{display:flex;gap:10px;padding:10px;overflow-x:auto;background:#060606}
-    .item{flex:0 0 auto;padding:8px 12px;border-radius:10px;background:#0d0d0d;border:1px solid #222;color:#fff}
-    .emoji{font-size:26px;display:block;text-align:center}
-    @media(min-width:900px){#app{flex-direction:row}#list{flex-direction:column;min-width:220px;height:100vh}}
-  </style>
-</head>
-<body>
-  <div id="app">
-    <div id="viewer"><canvas id="c" aria-label="3D botanical viewer"></canvas></div>
-    <div id="list"></div>
-  </div>  <!-- Direct module imports (no bare specifiers) -->  <script type="module">
-  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-  import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+let renderer, scene, camera, controls, models = [];
 
-  // Data
-  const FLOWERS = [
-    {emoji:'🌹',name:'Rose',id:'rose'},
-    {emoji:'🌷',name:'Tulip',id:'tulip'},
-    {emoji:'🌻',name:'Sunflower',id:'sunflower'},
-    {emoji:'🪻',name:'Hyacinth',id:'hyacinth'},
-    {emoji:'🌱',name:'Seedling',id:'seedling'},
-    {emoji:'🌾',name:'Grain',id:'grain'},
-    {emoji:'🍁',name:'Maple',id:'maple'},
-    {emoji:'☘️',name:'Shamrock',id:'shamrock'},
-    {emoji:'🍄',name:'Mushroom',id:'mushroom'},
-    {emoji:'🌿',name:'Artemisia',id:'wormwood'}
-  ];
+const canvas = document.getElementById('c');
+const list = document.getElementById('list');
 
-  // Build UI
-  const list = document.getElementById('list');
-  FLOWERS.forEach(f=>{
-    const b = document.createElement('button');
-    b.className = 'item'; b.type = 'button';
-    b.innerHTML = `<span class="emoji">${f.emoji}</span><div>${f.name}</div>`;
-    b.addEventListener('click', ()=> focusFlower(f.id));
-    list.appendChild(b);
-  });
-
-  // Three.js variables
-  const canvas = document.getElementById('c');
-  let renderer, scene, camera, controls;
-  let sprites = [];
-
-  function safeNumber(n, fallback){ return Number.isFinite(n) ? n : fallback; }
-
-  function init(){
-    try{
-      renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-
-      // Compute viewer area height (mobile-first: 70% height)
-      const vw = window.innerWidth; const vh = window.innerHeight;
-      const viewerHeight = (vw < 900) ? Math.round(vh * 0.70) : vh;
-      renderer.setSize(vw, viewerHeight, false);
-
-      scene = new THREE.Scene();
-
-      camera = new THREE.PerspectiveCamera(45, safeNumber(vw/viewerHeight, 1.6), 0.1, 200);
-      camera.position.set(0, 1.2, 3);
-
-      controls = new OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true; controls.dampingFactor = 0.08;
-      controls.minDistance = 0.8; controls.maxDistance = 20;
-
-      const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.9); scene.add(hemi);
-      const dir = new THREE.DirectionalLight(0xffffff, 0.5); dir.position.set(3,5,2); scene.add(dir);
-
-      const ground = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.MeshStandardMaterial({color:0x080808, roughness:1}));
-      ground.rotation.x = -Math.PI/2; ground.position.y = -0.6; scene.add(ground);
-
-      placeSprites();
-      animate();
-    }catch(err){
-      console.error('Init error', err);
-      showOverlayError(err);
-    }
-  }
-
-  function showOverlayError(err){
-    const overlay = document.createElement('div');
-    overlay.style.position='absolute'; overlay.style.left='12px'; overlay.style.top='12px'; overlay.style.padding='10px'; overlay.style.background='rgba(0,0,0,0.6)'; overlay.style.border='1px solid #550000'; overlay.style.borderRadius='8px'; overlay.style.zIndex=9999;
-    overlay.innerHTML = `<strong>Viewer error</strong><div style="max-width:320px;font-size:13px;margin-top:6px;color:#f3b1b1">${String(err).slice(0,200)}</div>`;
-    document.getElementById('viewer').appendChild(overlay);
-  }
-
-  function createEmojiTexture(emoji){
-    const size = 512;
-    const cvs = document.createElement('canvas'); cvs.width = cvs.height = size;
-    const ctx = cvs.getContext('2d');
-    ctx.clearRect(0,0,size,size);
-    ctx.fillStyle = 'white';
-    ctx.font = '300px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(emoji, size/2, size/2);
-    const tex = new THREE.CanvasTexture(cvs); tex.needsUpdate = true; return tex;
-  }
-
-  function placeSprites(){
-    const R = 2.0; sprites = [];
-    FLOWERS.forEach((f,i)=>{
-      const a = i / FLOWERS.length * Math.PI * 2;
-      const tex = createEmojiTexture(f.emoji);
-      const mat = new THREE.SpriteMaterial({map:tex, transparent:true});
-      const s = new THREE.Sprite(mat);
-      s.position.set(Math.cos(a)*R, 0.9 + Math.sin(a*2)*0.02, Math.sin(a)*R);
-      s.scale.set(1.0,1.0,1.0);
-      s.userData = f;
-      scene.add(s); sprites.push(s);
-    });
-  }
-
-  function focusFlower(id){
-    const s = sprites.find(x=>x.userData.id===id); if(!s) return;
-    controls.target.copy(s.position);
-    camera.position.set(s.position.x*1.6, s.position.y + 0.6, s.position.z*1.6);
-  }
-
-  function animate(){
-    requestAnimationFrame(animate);
-    if(controls) controls.update();
-    if(renderer && scene && camera) renderer.render(scene, camera);
-  }
-
-  window.addEventListener('resize', ()=>{
-    if(!renderer || !camera) return;
-    const vw = window.innerWidth; const vh = window.innerHeight;
-    const viewerHeight = (vw < 900) ? Math.round(vh * 0.70) : vh;
+async function init() {
+    renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const viewerHeight = (vw < 900)? Math.round(vh*0.7): vh;
     renderer.setSize(vw, viewerHeight, false);
-    camera.aspect = safeNumber(vw/viewerHeight, camera.aspect);
-    camera.updateProjectionMatrix();
-  });
 
-  // Init the viewer
-  init();
-  </script></body>
-</html>
+    scene = new THREE.Scene();
+
+    camera = new THREE.PerspectiveCamera(45, vw/viewerHeight, 0.1, 100);
+    camera.position.set(0,2,6);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+
+    const hemi = new THREE.HemisphereLight(0xffffff,0x222222,0.8);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff,0.5);
+    dir.position.set(5,5,5);
+    scene.add(dir);
+
+    // Ground
+    const texLoader = new THREE.TextureLoader();
+    texLoader.load('models/grass_texture225.jpg', (tex)=>{
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(30,30),
+            new THREE.MeshStandardMaterial({map: tex, roughness:1})
+        );
+        ground.rotation.x = -Math.PI/2;
+        scene.add(ground);
+    });
+
+    // Load flower list
+    const res = await fetch('models/flowers.json');
+    const folders = await res.json();
+
+    loadFlowers(folders);
+    animate();
+}
+
+function loadFlowers(folders){
+    const R = 3;
+    const mtlLoader = new MTLLoader();
+    const objLoader = new OBJLoader();
+
+    folders.forEach((name,i)=>{
+        const folderPath = `models/${name}/`;
+        // Try to load MTL
+        mtlLoader.setPath(folderPath);
+        objLoader.setPath(folderPath);
+
+        mtlLoader.load(`${name}.mtl`, (materials)=>{
+            materials.preload();
+            objLoader.setMaterials(materials);
+            objLoader.load(`${name}.obj`, (obj)=>{
+                const angle = i / folders.length * Math.PI*2;
+                obj.position.set(Math.cos(angle)*R,0,Math.sin(angle)*R);
+                obj.scale.set(0.5,0.5,0.5);
+                scene.add(obj);
+                models.push(obj);
+
+                addSidebarButton(name, models.length-1);
+            }, undefined, err=>console.error('OBJ load error:', err));
+        }, undefined, ()=>{
+            // If no MTL, load OBJ alone
+            objLoader.load(`${name}.obj`, (obj)=>{
+                const angle = i / folders.length * Math.PI*2;
+                obj.position.set(Math.cos(angle)*R,0,Math.sin(angle)*R);
+                obj.scale.set(0.5,0.5,0.5);
+                scene.add(obj);
+                models.push(obj);
+
+                addSidebarButton(name, models.length-1);
+            });
+        });
+    });
+}
+
+function addSidebarButton(name, index){
+    const b = document.createElement('div');
+    b.className='item';
+    b.textContent = name;
+    b.addEventListener('click', ()=> focusFlower(index));
+    list.appendChild(b);
+}
+
+function focusFlower(index){
+    const obj = models[index];
+    if(!obj) return;
+    controls.target.copy(obj.position);
+    camera.position.set(obj.position.x*1.5, obj.position.y+1.5, obj.position.z*1.5);
+}
+
+function animate(){
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene,camera);
+}
+
+window.addEventListener('resize', ()=>{
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const viewerHeight = (vw<900)? Math.round(vh*0.7): vh;
+    renderer.setSize(vw,viewerHeight,false);
+    camera.aspect = vw/viewerHeight;
+    camera.updateProjectionMatrix();
+});
+
+init();
+</script>
