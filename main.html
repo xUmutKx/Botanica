@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Botanical Garden — 3D Inspectable Flowers</title>
+  <style>
+    :root{--bg:#000000;--card:#111111;--accent:#7dd3fc;--muted:#b0b0b0}
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{background:linear-gradient(180deg,#041021 0%, #071224 60%);color:#e6eef8;display:flex;flex-direction:column}
+    header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px}
+    header h1{font-size:1.05rem;margin:0;letter-spacing:0.6px}
+    #app{flex:1;display:grid;grid-template-columns:1fr 320px;gap:18px;padding:12px 20px}
+    #viewport{background:linear-gradient(120deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));border-radius:12px;overflow:hidden;position:relative}
+    #infoPanel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));backdrop-filter:blur(4px);border-radius:12px;padding:14px;color:var(--muted);}
+    .card{background:var(--card);padding:12px;border-radius:10px;box-shadow:0 6px 22px rgba(2,6,23,0.6)}
+    .flower-list{display:flex;flex-direction:column;gap:8px}
+    .flower-item{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer}
+    .flower-item:hover{background:rgba(255,255,255,0.02)}
+    .emoji{font-size:22px;width:36px;height:36px;display:flex;align-items:center;justify-content:center}
+    .name{font-weight:600;color:#e6eef8}
+    .muted{font-size:0.85rem;color:var(--muted)}
+    #secretBtn{position:fixed;right:12px;top:40%;transform:translateY(-50%);width:46px;height:46px;border-radius:24px;background:linear-gradient(180deg,#111827,#0b1220);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(2,6,23,0.6);cursor:pointer;z-index:60}
+    #secretBtn:active{transform:translateY(-50%) scale(.98)}
+    #secretCounter{font-size:11px;color:var(--muted)}
+    .modal{position:fixed;inset:0;background:rgba(2,6,23,0.6);display:flex;align-items:center;justify-content:center;z-index:100}
+    .modal .box{width:420px;background:#071226;border-radius:12px;padding:14px}
+    .btn{background:linear-gradient(180deg,#0ea5a9,#0284c7);border:none;padding:8px 12px;border-radius:8px;color:white;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+    footer{padding:10px 20px;color:var(--muted);font-size:0.85rem}
+    @media(max-width:900px){#app{grid-template-columns:1fr}#secretBtn{right:8px;top:auto;bottom:12px}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Botanical Garden — 3D Inspectable Gallery</h1>
+    <div style="display:flex;gap:12px;align-items:center">
+      <div class="muted">Click a flower to view info — use mouse / touch to rotate & zoom</div>
+    </div>
+  </header>
+
+  <div id="app">
+    <div id="viewport" class="card">
+      <canvas id="c"></canvas>
+      <!-- Overlay info box for selected flower -->
+      <div id="overlay" style="position:absolute;left:12px;bottom:12px;background:rgba(2,6,23,0.6);padding:10px;border-radius:10px;min-width:220px;display:none;z-index:30">
+        <div id="overlayTitle" style="font-weight:700;color:#e6eef8"></div>
+        <div id="overlayDesc" style="font-size:0.9rem;color:var(--muted);margin-top:6px"></div>
+      </div>
+    </div>
+
+    <aside id="infoPanel" class="card">
+      <h3 style="margin-top:0">Flowers in the Garden</h3>
+      <div class="flower-list" id="flowerList"></div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)" />
+      <h4 style="margin:6px 0">Sorry Mode (hidden)</h4>
+      <div class="muted">Unlock the secret button on the right (click 22 times) — then enable "sorry mode" to write short apology messages you can reuse later. Messages are stored locally in your browser.</div>
+      <div id="sorryManager" style="margin-top:10px;display:none">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input id="msgInput" placeholder="Write a short apology (max 180 chars)" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:#e6eef8" />
+          <button id="saveMsg" class="btn">Save</button>
+        </div>
+        <div id="savedMsgs"></div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="secretBtn" title="Shh... secret">
+    <div style="text-align:center">
+      <div style="font-size:20px">🔒</div>
+      <div id="secretCounter">0</div>
+    </div>
+  </div>
+
+  <footer class="muted">Made to publish on GitHub Pages — open the file <code>botanical-garden-3d.html</code> and deploy to a public repo. See notes below.</footer>
+
+  <!-- Modals injected by JS -->
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ====== Data: flowers & short info (you can edit later) ======
+const FLOWERS = [
+  {id:'rose',emoji:'🌹',name:'Rose (Rosa)',desc:'Classic ornamental with many cultivars; symbol of love. Blooming habit varies by species.'},
+  {id:'tulip',emoji:'🌷',name:'Tulip (Tulipa)',desc:'Bulbous spring flower, native to Eurasia — famous for simple cup-shaped blooms.'},
+  {id:'sunflower',emoji:'🌻',name:'Sunflower (Helianthus annuus)',desc:'Tall annual with a large composite flower head; seeds are edible.'},
+  {id:'hyacinth',emoji:'🪻',name:'Hyacinth (Hyacinthus)',desc:'Fragrant spring bulb with dense flower spikes. Many garden varieties.'},
+  {id:'seedling',emoji:'🌱',name:'Seedling (young plant)',desc:'Young plant stage; shows early leaves and vigour.'},
+  {id:'grain',emoji:'🌾',name:'Grain / Grass (Poaceae)',desc:'Represents grasses and cereals — narrow leaves and spike-like seedheads.'},
+  {id:'maple',emoji:'🍁',name:'Maple leaf (Acer)',desc:'Deciduous tree leaf — used here for seasonal interest.'},
+  {id:'shamrock',emoji:'☘️',name:'Shamrock (Trifolium)',desc:'Clover-like leaf, symbolic in many cultures.'},
+  {id:'mushroom',emoji:'🍄',name:'Mushroom (Fungi)',desc:'Fungi are not plants but are included for garden ecology.'},
+  {id:'wormwood',emoji:'🌿',name:'Artemisia absinthium (Wormwood)',desc:'Aromatic perennial with silvery leaves; historically used in herbal remedies.'}
+];
+
+// ====== Simple 3D scene using Three.js with emoji-texture sprites ======
+let renderer, scene, camera, controls;
+const canvas = document.getElementById('c');
+function initScene(){
+  renderer = new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(canvas.clientWidth || canvas.parentElement.clientWidth, canvas.parentElement.clientHeight);
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, (canvas.clientWidth||1)/(canvas.parentElement.clientHeight||1), 0.1, 1000);
+  camera.position.set(0,1.4,3.5);
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.07;
+
+  // lights
+  const hemi = new THREE.HemisphereLight(0xffffff,0x444444,0.8); scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff,0.5); dir.position.set(3,5,2); scene.add(dir);
+
+  // ground
+  const g = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.MeshStandardMaterial({color:0x08121a,roughness:0.9,metalness:0}));
+  g.rotation.x = -Math.PI/2; g.position.y = -0.6; scene.add(g);
+
+  placeFlowerSprites();
+  window.addEventListener('resize', onResize);
+  animate();
+}
+
+function createEmojiTexture(emoji, label){
+  const size = 256;
+  const cvs = document.createElement('canvas'); cvs.width = size; cvs.height = size;
+  const ctx = cvs.getContext('2d');
+  // background circle
+  ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.fillRect(0,0,size,size);
+  ctx.font = '150px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(emoji, size/2, size/2 - 12);
+  // label
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font = '18px system-ui, Roboto, Arial'; ctx.fillText(label, size/2, size - 26);
+  const tex = new THREE.CanvasTexture(cvs); tex.needsUpdate = true; tex.anisotropy = 4; return tex;
+}
+
+const sprites = [];
+function placeFlowerSprites(){
+  const R = 1.6; const N = FLOWERS.length;
+  for(let i=0;i<N;i++){
+    const f = FLOWERS[i];
+    const angle = i/N * Math.PI*2;
+    const x = Math.cos(angle)*R; const z = Math.sin(angle)*R; const y = (Math.sin(angle*2)*0.05);
+    const tex = createEmojiTexture(f.emoji, f.name.split(' ')[0]);
+    const mat = new THREE.SpriteMaterial({map:tex,transparent:true});
+    const spr = new THREE.Sprite(mat);
+    spr.position.set(x,y,z); spr.scale.set(0.9,0.9,0.9);
+    spr.userData = f;
+    scene.add(spr);
+    sprites.push(spr);
+  }
+}
+
+function onResize(){
+  const w = canvas.parentElement.clientWidth; const h = canvas.parentElement.clientHeight;
+  renderer.setSize(w,h); camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+
+function animate(){
+  requestAnimationFrame(animate); controls.update(); renderer.render(scene,camera);
+}
+
+// Raycaster for click/hover
+const ray = new THREE.Raycaster(); const mouse = new THREE.Vector2();
+function getIntersects(clientX, clientY){
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((clientX - rect.left)/rect.width)*2 -1;
+  mouse.y = -((clientY - rect.top)/rect.height)*2 +1;
+  ray.setFromCamera(mouse,camera);
+  return ray.intersectObjects(sprites);
+}
+
+renderer?.domElement?.addEventListener?.('pointerdown', (ev)=>{});
+// handle clicks
+canvas.addEventListener('pointerdown', (ev)=>{
+  const ints = getIntersects(ev.clientX, ev.clientY);
+  if(ints.length){
+    const hit = ints[0].object.userData;
+    showOverlay(hit);
+    highlightListItem(hit.id);
+  } else {
+    hideOverlay(); clearHighlights();
+  }
+});
+
+// overlay functions
+const overlay = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlayTitle');
+const overlayDesc = document.getElementById('overlayDesc');
+function showOverlay(f){ overlay.style.display='block'; overlayTitle.textContent = f.name; overlayDesc.textContent = f.desc; }
+function hideOverlay(){ overlay.style.display='none'; }
+
+// Create side list
+const flowerList = document.getElementById('flowerList');
+function buildFlowerList(){
+  FLOWERS.forEach(f=>{
+    const el = document.createElement('div'); el.className='flower-item'; el.id='li-'+f.id;
+    el.innerHTML = `<div class='emoji'>${f.emoji}</div><div style='flex:1'><div class='name'>${f.name}</div><div class='muted'>${f.desc}</div></div>`;
+    el.onclick = ()=>{
+      // focus on sprite
+      const s = sprites.find(s=>s.userData.id===f.id);
+      if(!s) return;
+      // animate camera to position (simple)
+      const target = s.position.clone();
+      // move camera to target offset
+      camera.position.set(target.x*1.5, target.y+0.9, target.z*1.8);
+      controls.target.copy(target);
+      showOverlay(f);
+      clearHighlights(); el.style.background = 'rgba(255,255,255,0.02)';
+    };
+    flowerList.appendChild(el);
+  });
+}
+function highlightListItem(id){ clearHighlights(); const el = document.getElementById('li-'+id); if(el) el.style.background='rgba(255,255,255,0.03)'; }
+function clearHighlights(){ document.querySelectorAll('.flower-item').forEach(x=>x.style.background='transparent'); }
+
+// ====== Secret button logic (22 presses) ======
+let secretCount = 0; const secretBtn = document.getElementById('secretBtn'); const secretCounter = document.getElementById('secretCounter');
+secretBtn.addEventListener('click', ()=>{
+  secretCount++; secretCounter.textContent = secretCount;
+  if(secretCount === 22){ openSecretModal(); }
+});
+
+function openSecretModal(){
+  const modal = document.createElement('div'); modal.className='modal';
+  modal.innerHTML = `<div class='box'>
+    <h3>Secret menu</h3>
+    <p class='muted'>Enable "Sorry Mode" — a small local tool to write short apology messages you can store here. Messages are kept in your browser only.</p>
+    <div style='display:flex;gap:8px;margin-top:10px'><button id='enableSorry' class='btn'>Enable Sorry Mode</button><button id='closeM' class='btn ghost'>Close</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('closeM').onclick = ()=>{document.body.removeChild(modal); secretCount=0; secretCounter.textContent=secretCount};
+  document.getElementById('enableSorry').onclick = ()=>{document.body.removeChild(modal); secretCount=0; secretCounter.textContent=secretCount; enableSorryMode(); };
+}
+
+// Sorry mode: show manager and manage messages in localStorage
+function enableSorryMode(){
+  document.getElementById('sorryManager').style.display='block';
+  loadMessages();
+}
+
+function saveMessage(text){
+  if(!text) return; if(text.length>180) { alert('Keep it under 180 characters.'); return; }
+  const key = 'bg-sorry-msgs-v1'; const arr = JSON.parse(localStorage.getItem(key)||'[]'); arr.unshift({text,created:Date.now()}); localStorage.setItem(key, JSON.stringify(arr)); loadMessages();
+}
+
+function loadMessages(){
+  const key = 'bg-sorry-msgs-v1';
+  const container = document.getElementById('savedMsgs'); container.innerHTML='';
+  let arr = JSON.parse(localStorage.getItem(key)||'[]');
+
+  // Permanent built-in message
+  const defaultMsg = {text:"I'm really sorry for breaking your heart. I love you, and I want to do better.", created:Date.now()};
+  arr.unshift(defaultMsg);
+
+  arr.forEach((m)=>{
+    const el = document.createElement('div');
+    el.style.display='flex'; el.style.alignItems='center'; el.style.justifyContent='space-between'; el.style.gap='8px'; el.style.padding='6px 0';
+    el.innerHTML = `<div style='flex:1'><div style='font-size:0.95rem'>${m.text}</div></div>`;
+    const copyBtn = document.createElement('button'); copyBtn.className='btn ghost'; copyBtn.textContent='Copy';
+    copyBtn.onclick = ()=>{navigator.clipboard.writeText(m.text); copyBtn.textContent='Copied'; setTimeout(()=>copyBtn.textContent='Copy',1200)};
+    const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='6px'; actions.appendChild(copyBtn);
+    el.appendChild(actions);
+    container.appendChild(el);
+  });
+}
+  arr.forEach((m,idx)=>{
+    const el = document.createElement('div'); el.style.display='flex'; el.style.alignItems='center'; el.style.justifyContent='space-between'; el.style.gap='8px'; el.style.padding='6px 0';
+    el.innerHTML = `<div style='flex:1'><div style='font-size:0.95rem'>${m.text}</div><div class='muted' style='font-size:0.78rem'>Saved ${new Date(m.created).toLocaleString()}</div></div>`;
+    const copyBtn = document.createElement('button'); copyBtn.className='btn ghost'; copyBtn.textContent='Copy'; copyBtn.onclick = ()=>{navigator.clipboard.writeText(m.text); copyBtn.textContent='Copied'; setTimeout(()=>copyBtn.textContent='Copy',1200)};
+    const delBtn = document.createElement('button'); delBtn.className='btn ghost'; delBtn.textContent='Delete'; delBtn.onclick = ()=>{arr.splice(idx,1); localStorage.setItem(key, JSON.stringify(arr)); loadMessages();};
+    const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='6px'; actions.appendChild(copyBtn); actions.appendChild(delBtn);
+    el.appendChild(actions);
+    container.appendChild(el);
+  });
+}
+
+// save button hook
+document.getElementById('saveMsg').addEventListener('click', ()=>{ const v=document.getElementById('msgInput').value.trim(); if(v) saveMessage(v); document.getElementById('msgInput').value=''; });
+
+// init
+buildFlowerList(); initScene();
+
+// small UX: resize canvas to parent size on load
+function fitCanvas(){ const p = canvas.parentElement; canvas.style.width = '100%'; canvas.style.height = p.clientHeight + 'px'; onResize(); }
+window.addEventListener('load', fitCanvas); window.addEventListener('resize', fitCanvas);
+
+</script>
+</body>
+</html>
