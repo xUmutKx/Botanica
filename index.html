@@ -3,152 +3,76 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>3D Botanical Prototype</title>
+<title>Botanical 3D Viewer</title>
 <style>
-  html,body{margin:0;padding:0;height:100%;background:#000;color:#fff;font-family:Arial,system-ui;}
-  #app{display:flex;flex-direction:column;height:100vh;}
-  #viewer{flex:1;position:relative;}
-  canvas{width:100%;height:100%;display:block;}
-  #list{display:flex;gap:10px;padding:10px;overflow-x:auto;background:#111;}
-  .item{padding:8px 12px;border-radius:8px;background:#222;border:1px solid #333;cursor:pointer;text-align:center;}
-  @media(min-width:900px){#app{flex-direction:row;}#list{flex-direction:column;min-width:180px;height:100vh;}}
+  html, body { margin:0; height:100%; background:#000; color:#fff; font-family: Arial, system-ui;}
+  #app { display:flex; flex-direction:column; height:100vh; }
+  #viewer { flex:1; position:relative; }
+  canvas { width:100%; height:100%; display:block; }
+  #buttonContainer { position:absolute; right:10px; bottom:10px; z-index:10; }
+  #sorryBtn { background:#222; border:1px solid #555; padding:10px 12px; border-radius:8px; cursor:pointer; color:#fff; font-size:16px; }
+  #sorryOverlay { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; text-align:center; color:#fff; font-size:18px; padding:20px; box-sizing:border-box; display:none; z-index:999; }
 </style>
 </head>
 <body>
 <div id="app">
-  <div id="viewer"><canvas id="c"></canvas></div>
-  <div id="list"><div class="item">Rose</div></div>
+  <div id="viewer"><canvas id="canvas"></canvas></div>
+  <div id="buttonContainer">
+    <button id="sorryBtn">🔒</button>
+  </div>
+  <div id="sorryOverlay">
+    <div id="sorryMessage"></div>
+  </div>
 </div>
 
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-import { OBJLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
-import { MTLLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/MTLLoader.js';
+import { ObjViewer } from 'https://cdn.jsdelivr.net/gh/movabo/ObjViewer/js/ObjViewer.js';
 
-let renderer, scene, camera, controls, model;
+const canvas = document.getElementById('canvas');
 
-const canvas = document.getElementById('c');
-const folder = 'models/rose/'; // prototype with rose only
+// ---- Load your rose folder as a prototype ----
+const files = [
+  'models/rose/rose.obj',
+  'models/rose/rose.mtl'
+];
 
-function init(){
-  renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
-  const vw=window.innerWidth, vh=window.innerHeight;
-  renderer.setSize(vw, Math.round(vh*0.7), false);
+// Callbacks for viewer
+const callbacks = {
+  onLoad: ()=> console.log('Model loaded'),
+  onError: e=> console.error('Load error', e)
+};
 
-  scene = new THREE.Scene();
+const viewer = new ObjViewer(THREE, canvas, files, callbacks);
+viewer.load();
+viewer.startAnimation();
 
-  camera = new THREE.PerspectiveCamera(45, vw/(Math.round(vh*0.7)), 0.1, 100);
-  camera.position.set(0,2,5);
+// ---- Sorry Mode Setup ----
+const sorryBtn = document.getElementById('sorryBtn');
+const sorryOverlay = document.getElementById('sorryOverlay');
+const sorryMessage = document.getElementById('sorryMessage');
 
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
+let clickCount = 0;
+const maxClicks = 22;
 
-  const hemi = new THREE.HemisphereLight(0xffffff,0x222222,0.8);
-  scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffffff,0.5);
-  dir.position.set(5,5,5);
-  scene.add(dir);
+// Your heartfelt sorry message
+const message = `I am truly sorry for all the moments I may have hurt or disappointed you. 
+I want you to know that you mean everything to me, and I deeply regret any pain I've caused. 
+I love you, and I promise to do better every single day.`;
 
-  // Ground plane
-  const texLoader = new THREE.TextureLoader();
-  texLoader.load('models/grass_texture225.jpg', tex=>{
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(20,20),
-      new THREE.MeshStandardMaterial({map:tex,roughness:1})
-    );
-    ground.rotation.x=-Math.PI/2;
-    scene.add(ground);
-  });
-
-  // Load rose OBJ+MTL
-  const mtlLoader = new MTLLoader();
-  mtlLoader.setPath(folder);
-  mtlLoader.load('rose.mtl', materials=>{
-    materials.preload();
-    const objLoader = new OBJLoader();
-    objLoader.setPath(folder);
-    objLoader.setMaterials(materials);
-    objLoader.load('rose.obj', obj=>{
-      model = obj;
-      model.scale.set(0.5,0.5,0.5);
-      scene.add(model);
-    }, undefined, err=>console.error('OBJ load failed:', err));
-  });
-
-  animate();
-}
-
-function animate(){
-  requestAnimationFrame(animate);
-  if(controls) controls.update();
-  renderer.render(scene,camera);
-}
-
-// Mobile resize
-window.addEventListener('resize', ()=>{
-  const vw=window.innerWidth, vh=window.innerHeight;
-  renderer.setSize(vw, Math.round(vh*0.7), false);
-  camera.aspect = vw/(Math.round(vh*0.7));
-  camera.updateProjectionMatrix();
+sorryBtn.addEventListener('click', ()=>{
+  clickCount++;
+  if(clickCount >= maxClicks){
+    sorryOverlay.style.display = 'flex';
+    sorryMessage.textContent = message;
+  }
 });
 
-init();
+// Hide overlay when clicked
+sorryOverlay.addEventListener('click', ()=>{
+  sorryOverlay.style.display = 'none';
+  clickCount = 0; // reset
+});
 </script>
 </body>
-</html><script type="module">
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-import { OBJLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
-import { MTLLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/MTLLoader.js';
-
-let renderer, scene, camera, controls, models = [];
-
-const canvas = document.getElementById('c');
-const list = document.getElementById('list');
-
-async function init() {
-    renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const viewerHeight = (vw < 900)? Math.round(vh*0.7): vh;
-    renderer.setSize(vw, viewerHeight, false);
-
-    scene = new THREE.Scene();
-
-    camera = new THREE.PerspectiveCamera(45, vw/viewerHeight, 0.1, 100);
-    camera.position.set(0,2,6);
-
-    controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-
-    const hemi = new THREE.HemisphereLight(0xffffff,0x222222,0.8);
-    scene.add(hemi);
-    const dir = new THREE.DirectionalLight(0xffffff,0.5);
-    dir.position.set(5,5,5);
-    scene.add(dir);
-
-    // Ground
-    const texLoader = new THREE.TextureLoader();
-    texLoader.load('models/grass_texture225.jpg', (tex)=>{
-        const ground = new THREE.Mesh(
-            new THREE.PlaneGeometry(30,30),
-            new THREE.MeshStandardMaterial({map: tex, roughness:1})
-        );
-        ground.rotation.x = -Math.PI/2;
-        scene.add(ground);
-    });
-
-    // Load flower list
-    const res = await fetch('models/flowers.json');
-    const folders = await res.json();
-
-    loadFlowers(folders);
-    animate();
-}
-
-function loadFlowers(folders){
-    const R = 3;
+</html>
