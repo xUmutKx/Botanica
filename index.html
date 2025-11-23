@@ -1,475 +1,147 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Botanical Garden — 3D Inspectable Flowers</title>
-  <style>
-    :root{--bg:#000000;--card:#111111;--accent:#7dd3fc;--muted:#b0b0b0}
-    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
-    body{background:linear-gradient(180deg,#041021 0%, #071224 60%);color:#e6eef8;display:flex;flex-direction:column}
-    header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px}
-    header h1{font-size:1.05rem;margin:0;letter-spacing:0.6px}
-    #app{flex:1;display:grid;grid-template-columns:1fr 320px;gap:18px;padding:12px 20px}
-    #viewport{background:linear-gradient(120deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));border-radius:12px;overflow:hidden;position:relative}
-    #infoPanel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));backdrop-filter:blur(4px);border-radius:12px;padding:14px;color:var(--muted);}
-    .card{background:var(--card);padding:12px;border-radius:10px;box-shadow:0 6px 22px rgba(2,6,23,0.6)}
-    .flower-list{display:flex;flex-direction:column;gap:8px}
-    .flower-item{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer}
-    .flower-item:hover{background:rgba(255,255,255,0.02)}
-    .emoji{font-size:22px;width:36px;height:36px;display:flex;align-items:center;justify-content:center}
-    .name{font-weight:600;color:#e6eef8}
-    .muted{font-size:0.85rem;color:var(--muted)}
-    #secretBtn{position:fixed;right:12px;top:40%;transform:translateY(-50%);width:46px;height:46px;border-radius:24px;background:linear-gradient(180deg,#111827,#0b1220);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(2,6,23,0.6);cursor:pointer;z-index:60}
-    #secretBtn:active{transform:translateY(-50%) scale(.98)}
-    #secretCounter{font-size:11px;color:var(--muted)}
-    .modal{position:fixed;inset:0;background:rgba(2,6,23,0.6);display:flex;align-items:center;justify-content:center;z-index:100}
-    .modal .box{width:420px;background:#071226;border-radius:12px;padding:14px}
-    .btn{background:linear-gradient(180deg,#0ea5a9,#0284c7);border:none;padding:8px 12px;border-radius:8px;color:white;cursor:pointer}
-    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
-    footer{padding:10px 20px;color:var(--muted);font-size:0.85rem}
-    @media(max-width:900px){#app{grid-template-columns:1fr}#secretBtn{right:8px;top:auto;bottom:12px}}
-  </style>
-</head>
-<body>
-  <header>
-    <h1>Botanical Garden — 3D Inspectable Gallery</h1>
-    <div style="display:flex;gap:12px;align-items:center">
-      <div class="muted">Click a flower to view info — use mouse / touch to rotate & zoom</div>
-    </div>
-  </header>
 
-  <div id="app">
-    <div id="viewport" class="card">
-      <canvas id="c"></canvas>
-      <!-- Overlay info box for selected flower -->
-      <div id="overlay" style="position:absolute;left:12px;bottom:12px;background:rgba(2,6,23,0.6);padding:10px;border-radius:10px;min-width:220px;display:none;z-index:30">
-        <div id="overlayTitle" style="font-weight:700;color:#e6eef8"></div>
-        <div id="overlayDesc" style="font-size:0.9rem;color:var(--muted);margin-top:6px"></div>
-      </div>
-    </div>
-
-    <aside id="infoPanel" class="card">
-      <h3 style="margin-top:0">Flowers in the Garden</h3>
-      <div class="flower-list" id="flowerList"></div>
-
-      <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)" />
-      <h4 style="margin:6px 0">Sorry Mode (hidden)</h4>
-      <div class="muted">Unlock the secret button on the right (click 22 times) — then enable "sorry mode" to write short apology messages you can reuse later. Messages are stored locally in your browser.</div>
-      <div id="sorryManager" style="margin-top:10px;display:none">
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <input id="msgInput" placeholder="Write a short apology (max 180 chars)" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:#e6eef8" />
-          <button id="saveMsg" class="btn">Save</button>
-        </div>
-        <div id="savedMsgs"></div>
-      </div>
-    </aside>
-  </div>
-
-  <div id="secretBtn" title="Shh... secret">
-    <div style="text-align:center">
-      <div style="font-size:20px">🔒</div>
-      <div id="secretCounter">0</div>
-    </div>
-  </div>
-
-  <footer class="muted">Made to publish on GitHub Pages — open the file <code>botanical-garden-3d.html</code> and deploy to a public repo. See notes below.</footer>
-
-  <!-- Modals injected by JS -->
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/OrbitControls.js"></script>
-<script>
-// ====== Data: flowers & short info (you can edit later) ======
-const FLOWERS = [
-  {id:'rose',emoji:'🌹',name:'Rose (Rosa)',desc:'Classic ornamental with many cultivars; symbol of love. Blooming habit varies by species.'},
-  {id:'tulip',emoji:'🌷',name:'Tulip (Tulipa)',desc:'Bulbous spring flower, native to Eurasia — famous for simple cup-shaped blooms.'},
-  {id:'sunflower',emoji:'🌻',name:'Sunflower (Helianthus annuus)',desc:'Tall annual with a large composite flower head; seeds are edible.'},
-  {id:'hyacinth',emoji:'🪻',name:'Hyacinth (Hyacinthus)',desc:'Fragrant spring bulb with dense flower spikes. Many garden varieties.'},
-  {id:'seedling',emoji:'🌱',name:'Seedling (young plant)',desc:'Young plant stage; shows early leaves and vigour.'},
-  {id:'grain',emoji:'🌾',name:'Grain / Grass (Poaceae)',desc:'Represents grasses and cereals — narrow leaves and spike-like seedheads.'},
-  {id:'maple',emoji:'🍁',name:'Maple leaf (Acer)',desc:'Deciduous tree leaf — used here for seasonal interest.'},
-  {id:'shamrock',emoji:'☘️',name:'Shamrock (Trifolium)',desc:'Clover-like leaf, symbolic in many cultures.'},
-  {id:'mushroom',emoji:'🍄',name:'Mushroom (Fungi)',desc:'Fungi are not plants but are included for garden ecology.'},
-  {id:'wormwood',emoji:'🌿',name:'Artemisia absinthium (Wormwood)',desc:'Aromatic perennial with silvery leaves; historically used in herbal remedies.'}
-];
-
-// ====== Simple 3D scene using Three.js with emoji-texture sprites ======
-let renderer, scene, camera, controls;
-const canvas = document.getElementById('c');
-function initScene(){
-  renderer = new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(canvas.clientWidth || canvas.parentElement.clientWidth, canvas.parentElement.clientHeight);
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(45, (canvas.clientWidth||1)/(canvas.parentElement.clientHeight||1), 0.1, 1000);
-  camera.position.set(0,1.4,3.5);
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Botanica — 3D Garden</title>
+  <title>Botanical Garden — 3D Viewer (Fixed Imports)</title>
   <style>
-    body { margin:0; background:#0a0a0a; color:white; font-family:Inter, sans-serif; }
-    #app { display:flex; flex-direction:column; height:100vh; }
-    #viewer { flex:1; position:relative; }
-    canvas { width:100% !important; height:100% !important; display:block; }
-
-    /* Mobile-first flower list */
-    #list { display:flex; overflow-x:auto; gap:14px; padding:10px; background:#111; }
-    .item { flex:0 0 auto; padding:10px 14px; background:#1a1a1a; border-radius:10px; cursor:pointer; text-align:center; }
-    .item:hover { background:#222; }
-    .emoji { font-size:28px; }
-  </style>
-</head>
-<body>
-<div id="app">
-  <div id="viewer"><canvas id="c"></canvas></div>
-  <div id="list"></div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/OrbitControls.js"></script>
-<script>
-const FLOWERS = [
-  {emoji:'🌹',name:'Rose',id:'rose'},
-  {emoji:'🌷',name:'Tulip',id:'tulip'},
-  {emoji:'🌻',name:'Sunflower',id:'sunflower'},
-  {emoji:'🪻',name:'Hyacinth',id:'hyacinth'},
-  {emoji:'🌱',name:'Seedling',id:'seedling'},
-  {emoji:'🌾',name:'Grain',id:'grain'},
-  {emoji:'🍁',name:'Maple',id:'maple'},
-  {emoji:'☘️',name:'Shamrock',id:'shamrock'},
-  {emoji:'🍄',name:'Mushroom',id:'mushroom'},
-  {emoji:'🌿',name:'Artemisia',id:'wormwood'}
-];
-
-// UI list
-const list = document.getElementById("list");
-FLOWERS.forEach(f => {
-  const el = document.createElement("div");
-  el.className = "item";
-  el.innerHTML = `<div class='emoji'>${f.emoji}</div><div>${f.name}</div>`;
-  el.onclick = () => focusFlower(f.id);
-  list.appendChild(el);
-});
-
-// 3D Scene
-let renderer, scene, camera, controls;
-const canvas = document.getElementById("c");
-
-function init() {
-  renderer = new THREE.WebGLRenderer({canvas, antialias:true});
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight * 0.7);
-
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(45, window.innerWidth/(window.innerHeight*0.7), 0.1, 100);
-  camera.position.set(0,1.2,3);
-
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Botanica — Fixed OrbitControls</title>
-  <style>
-    :root{--bg:#000;--panel:#0f0f0f;--muted:#9a9a9a}
-    html,body{height:100%;margin:0;background:var(--bg);color:#fff;font-family:Inter, system-ui, -apple-system, Roboto, Arial, sans-serif}
+    html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Arial}
     #app{display:flex;flex-direction:column;height:100vh}
-    #viewer{flex:1;position:relative;min-height:300px}
+    #viewer{flex:1;min-height:320px;position:relative}
     canvas{width:100%;height:100%;display:block}
-    #list{display:flex;gap:10px;padding:10px;overflow-x:auto;background:#0a0a0a}
-    .item{flex:0 0 auto;padding:8px 12px;border-radius:10px;background:var(--panel);min-width:84px;text-align:center;cursor:pointer;border:1px solid #111}
-    .emoji{font-size:28px;display:block}
-    .name{font-size:13px;color:var(--muted);margin-top:6px}
-    @media(min-width:900px){#app{flex-direction:row}#list{flex-direction:column;min-width:260px;height:100vh;overflow-y:auto}}
-  </style>
-</head>
-<body>
-<div id="app">
-  <div id="viewer"><canvas id="c"></canvas></div>
-  <div id="list"></div>
-</div>
-
-<!-- FIXED VERSION: Using Three.js + OrbitControls from same CDN version & correct paths -->
-<script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
-
-const FLOWERS = [
-  {emoji:'🌹',name:'Rose',id:'rose'},
-  {emoji:'🌷',name:'Tulip',id:'tulip'},
-  {emoji:'🌻',name:'Sunflower',id:'sunflower'},
-  {emoji:'🪻',name:'Hyacinth',id:'hyacinth'},
-  {emoji:'🌱',name:'Seedling',id:'seedling'},
-  {emoji:'🌾',name:'Grain',id:'grain'},
-  {emoji:'🍁',name:'Maple',id:'maple'},
-  {emoji:'☘️',name:'Shamrock',id:'shamrock'},
-  {emoji:'🍄',name:'Mushroom',id:'mushroom'},
-  {emoji:'🌿',name:'Artemisia',id:'wormwood'}
-];
-
-const list = document.getElementById('list');
-FLOWERS.forEach(f => {
-  const el = document.createElement('button');
-  el.className='item'; el.innerHTML=`<span class='emoji'>${f.emoji}</span><div class='name'>${f.name}</div>`;
-  el.onclick = ()=> focusFlower(f.id);
-  list.appendChild(el);
-});
-
-let renderer, scene, camera, controls;
-let sprites = [];
-const canvas = document.getElementById('c');
-
-function createRenderer(){
-  renderer = new THREE.WebGLRenderer({canvas, antialias:true});
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight*0.7);
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Botanical Garden 3D</title>
-  <style>
-    html,body{margin:0;height:100%;background:#000;color:#fff;font-family:system-ui}
-    #app{display:flex;flex-direction:column;height:100vh}
-    #viewer{flex:1;min-height:300px}
-    canvas{width:100%;height:100%;display:block}
-    #list{display:flex;gap:10px;padding:10px;overflow-x:auto;background:#0a0a0a}
-    .item{flex:0 0 auto;padding:8px 14px;border-radius:10px;background:#111;border:1px solid #222;font-size:14px}
+    #list{display:flex;gap:10px;padding:10px;overflow-x:auto;background:#060606}
+    .item{flex:0 0 auto;padding:8px 12px;border-radius:10px;background:#0d0d0d;border:1px solid #222;color:#fff}
     .emoji{font-size:26px;display:block;text-align:center}
+    @media(min-width:900px){#app{flex-direction:row}#list{flex-direction:column;min-width:220px;height:100vh}}
   </style>
 </head>
 <body>
-<div id="app">
-  <div id="viewer"><canvas id="c"></canvas></div>
-  <div id="list"></div>
-</div>
+  <div id="app">
+    <div id="viewer"><canvas id="c" aria-label="3D botanical viewer"></canvas></div>
+    <div id="list"></div>
+  </div>  <!-- Direct module imports (no bare specifiers) -->  <script type="module">
+  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+  import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
-<!-- CLEAN WORKING 3D VIEWER - NO EXTRA TEXT -->
-<script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+  // Data
+  const FLOWERS = [
+    {emoji:'🌹',name:'Rose',id:'rose'},
+    {emoji:'🌷',name:'Tulip',id:'tulip'},
+    {emoji:'🌻',name:'Sunflower',id:'sunflower'},
+    {emoji:'🪻',name:'Hyacinth',id:'hyacinth'},
+    {emoji:'🌱',name:'Seedling',id:'seedling'},
+    {emoji:'🌾',name:'Grain',id:'grain'},
+    {emoji:'🍁',name:'Maple',id:'maple'},
+    {emoji:'☘️',name:'Shamrock',id:'shamrock'},
+    {emoji:'🍄',name:'Mushroom',id:'mushroom'},
+    {emoji:'🌿',name:'Artemisia',id:'wormwood'}
+  ];
 
-const FLOWERS=[
- {emoji:'🌹',name:'Rose',id:'rose'},
- {emoji:'🌷',name:'Tulip',id:'tulip'},
- {emoji:'🌻',name:'Sunflower',id:'sunflower'},
- {emoji:'🪻',name:'Hyacinth',id:'hyacinth'},
- {emoji:'🌱',name:'Seedling',id:'seedling'},
- {emoji:'🌾',name:'Grain',id:'grain'},
- {emoji:'🍁',name:'Maple',id:'maple'},
- {emoji:'☘️',name:'Shamrock',id:'shamrock'},
- {emoji:'🍄',name:'Mushroom',id:'mushroom'},
- {emoji:'🌿',name:'Artemisia',id:'wormwood'}
-];
-
-const list=document.getElementById("list");
-FLOWERS.forEach(f=>{
-  const b=document.createElement("button");
-  b.className="item";
-  b.innerHTML=`<span class='emoji'>${f.emoji}</span>${f.name}`;
-  b.onclick=()=>focusFlower(f.id);
-  list.appendChild(b);
-});
-
-let renderer,scene,camera,controls;
-const canvas=document.getElementById("c");
-
-function init(){
-  renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-  renderer.setSize(window.innerWidth,window.innerHeight*0.7);
-
-  scene=new THREE.Scene();
-
-  camera=new THREE.PerspectiveCamera(45,window.innerWidth/(window.innerHeight*0.7),0.1,100);
-  camera.position.set(0,1.2,3);
-
-  controls=new OrbitControls(camera,renderer.domElement);
-  controls.enableDamping=true;
-
-  const hemi=new THREE.HemisphereLight(0xffffff,0x222222,1);
-  scene.add(hemi);
-
-  const ground=new THREE.Mesh(
-    new THREE.PlaneGeometry(20,20),
-    new THREE.MeshStandardMaterial({color:0x111111})
-  );
-  ground.rotation.x=-Math.PI/2;
-  scene.add(ground);
-
-  placeSprites();
-  animate();
-}
-
-const sprites=[];
-function createEmojiTexture(emoji){
-  const s=256;
-  const cvs=document.createElement("canvas");
-  cvs.width=cvs.height=s;
-  const ctx=cvs.getContext("2d");
-  ctx.font="180px serif";ctx.textAlign="center";ctx.textBaseline="middle";
-  ctx.fillText(emoji,s/2,s/2);
-  return new THREE.CanvasTexture(cvs);
-}
-
-function placeSprites(){
-  const R=2;
-  FLOWERS.forEach((f,i)=>{
-    const a=i/FLOWERS.length*Math.PI*2;
-    const tex=createEmojiTexture(f.emoji);
-    const mat=new THREE.SpriteMaterial({map:tex});
-    const sp=new THREE.Sprite(mat);
-    sp.position.set(Math.cos(a)*R,1,Math.sin(a)*R);
-    sp.userData=f;
-    sprites.push(sp);
-    scene.add(sp);
+  // Build UI
+  const list = document.getElementById('list');
+  FLOWERS.forEach(f=>{
+    const b = document.createElement('button');
+    b.className = 'item'; b.type = 'button';
+    b.innerHTML = `<span class="emoji">${f.emoji}</span><div>${f.name}</div>`;
+    b.addEventListener('click', ()=> focusFlower(f.id));
+    list.appendChild(b);
   });
-}
 
-function focusFlower(id){
-  const sp=sprites.find(s=>s.userData.id===id);
-  if(!sp)return;
-  controls.target.copy(sp.position);
-  camera.position.set(sp.position.x*1.6,1.2,sp.position.z*1.6);
-}
+  // Three.js variables
+  const canvas = document.getElementById('c');
+  let renderer, scene, camera, controls;
+  let sprites = [];
 
-function animate(){
-  requestAnimationFrame(animate);
-  controls.update();
-  renderer.render(scene,camera);
-}
+  function safeNumber(n, fallback){ return Number.isFinite(n) ? n : fallback; }
 
-window.addEventListener("resize",()=>{
-  renderer.setSize(window.innerWidth,window.innerHeight*0.7);
-  camera.aspect=window.innerWidth/(window.innerHeight*0.7);
-  camera.updateProjectionMatrix();
-});
+  function init(){
+    try{
+      renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
-init();
-</script>
+      // Compute viewer area height (mobile-first: 70% height)
+      const vw = window.innerWidth; const vh = window.innerHeight;
+      const viewerHeight = (vw < 900) ? Math.round(vh * 0.70) : vh;
+      renderer.setSize(vw, viewerHeight, false);
 
-</body>
+      scene = new THREE.Scene();
+
+      camera = new THREE.PerspectiveCamera(45, safeNumber(vw/viewerHeight, 1.6), 0.1, 200);
+      camera.position.set(0, 1.2, 3);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true; controls.dampingFactor = 0.08;
+      controls.minDistance = 0.8; controls.maxDistance = 20;
+
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.9); scene.add(hemi);
+      const dir = new THREE.DirectionalLight(0xffffff, 0.5); dir.position.set(3,5,2); scene.add(dir);
+
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.MeshStandardMaterial({color:0x080808, roughness:1}));
+      ground.rotation.x = -Math.PI/2; ground.position.y = -0.6; scene.add(ground);
+
+      placeSprites();
+      animate();
+    }catch(err){
+      console.error('Init error', err);
+      showOverlayError(err);
+    }
+  }
+
+  function showOverlayError(err){
+    const overlay = document.createElement('div');
+    overlay.style.position='absolute'; overlay.style.left='12px'; overlay.style.top='12px'; overlay.style.padding='10px'; overlay.style.background='rgba(0,0,0,0.6)'; overlay.style.border='1px solid #550000'; overlay.style.borderRadius='8px'; overlay.style.zIndex=9999;
+    overlay.innerHTML = `<strong>Viewer error</strong><div style="max-width:320px;font-size:13px;margin-top:6px;color:#f3b1b1">${String(err).slice(0,200)}</div>`;
+    document.getElementById('viewer').appendChild(overlay);
+  }
+
+  function createEmojiTexture(emoji){
+    const size = 512;
+    const cvs = document.createElement('canvas'); cvs.width = cvs.height = size;
+    const ctx = cvs.getContext('2d');
+    ctx.clearRect(0,0,size,size);
+    ctx.fillStyle = 'white';
+    ctx.font = '300px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(emoji, size/2, size/2);
+    const tex = new THREE.CanvasTexture(cvs); tex.needsUpdate = true; return tex;
+  }
+
+  function placeSprites(){
+    const R = 2.0; sprites = [];
+    FLOWERS.forEach((f,i)=>{
+      const a = i / FLOWERS.length * Math.PI * 2;
+      const tex = createEmojiTexture(f.emoji);
+      const mat = new THREE.SpriteMaterial({map:tex, transparent:true});
+      const s = new THREE.Sprite(mat);
+      s.position.set(Math.cos(a)*R, 0.9 + Math.sin(a*2)*0.02, Math.sin(a)*R);
+      s.scale.set(1.0,1.0,1.0);
+      s.userData = f;
+      scene.add(s); sprites.push(s);
+    });
+  }
+
+  function focusFlower(id){
+    const s = sprites.find(x=>x.userData.id===id); if(!s) return;
+    controls.target.copy(s.position);
+    camera.position.set(s.position.x*1.6, s.position.y + 0.6, s.position.z*1.6);
+  }
+
+  function animate(){
+    requestAnimationFrame(animate);
+    if(controls) controls.update();
+    if(renderer && scene && camera) renderer.render(scene, camera);
+  }
+
+  window.addEventListener('resize', ()=>{
+    if(!renderer || !camera) return;
+    const vw = window.innerWidth; const vh = window.innerHeight;
+    const viewerHeight = (vw < 900) ? Math.round(vh * 0.70) : vh;
+    renderer.setSize(vw, viewerHeight, false);
+    camera.aspect = safeNumber(vw/viewerHeight, camera.aspect);
+    camera.updateProjectionMatrix();
+  });
+
+  // Init the viewer
+  init();
+  </script></body>
 </html>
-
-}
-
-function initScene(){
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(45, window.innerWidth/(window.innerHeight*0.7), 0.1, 200);
-  camera.position.set(0, 1.2, 3);
-
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-
-  const hemi = new THREE.HemisphereLight(0xffffff,0x444444,1); scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffffff,0.4); dir.position.set(3,5,2); scene.add(dir);
-
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(20,20), new THREE.MeshStandardMaterial({color:0x111111}));
-  ground.rotation.x = -Math.PI/2;
-  scene.add(ground);
-
-  placeSprites();
-}
-
-function createEmojiTexture(emoji){
-  const size = 512;
-  const cvs = document.createElement('canvas'); cvs.width=cvs.height=size;
-  const ctx = cvs.getContext('2d');
-  ctx.clearRect(0,0,size,size);
-  ctx.font='260px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText(emoji, size/2, size/2);
-  return new THREE.CanvasTexture(cvs);
-}
-
-function placeSprites(){
-  const R = 2;
-  FLOWERS.forEach((f,i)=>{
-    const a = i/FLOWERS.length * Math.PI * 2;
-    const tex = createEmojiTexture(f.emoji);
-    const mat = new THREE.SpriteMaterial({map:tex});
-    const s = new THREE.Sprite(mat);
-    s.scale.set(1,1,1);
-    s.position.set(Math.cos(a)*R, 1, Math.sin(a)*R);
-    s.userData=f;
-    scene.add(s); sprites.push(s);
-  });
-}
-
-function focusFlower(id){
-  const s = sprites.find(sp=>sp.userData.id===id);
-  if(!s) return;
-  camera.position.set(s.position.x*1.6, 1.2, s.position.z*1.6);
-  controls.target.copy(s.position);
-}
-
-function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene,camera); }
-
-window.addEventListener('resize', ()=>{
-  renderer.setSize(window.innerWidth, window.innerHeight*0.7);
-  camera.aspect = window.innerWidth/(window.innerHeight*0.7);
-  camera.updateProjectionMatrix();
-});
-
-createRenderer();
-initScene();
-animate();
-
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.07;
-
-  const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
-  scene.add(light);
-
-  // Ground
-  const g = new THREE.Mesh(new THREE.PlaneGeometry(10,10), new THREE.MeshStandardMaterial({color:0x111111}));
-  g.rotation.x = -Math.PI/2;
-  scene.add(g);
-
-  placeSprites();
-  animate();
-}
-
-let sprites = [];
-function createEmoji(emoji) {
-  const size = 256;
-  const cnv = document.createElement('canvas');
-  cnv.width = size; cnv.height = size;
-  const ctx = cnv.getContext('2d');
-  ctx.fillStyle = '#000'; ctx.fillRect(0,0,size,size);
-  ctx.font = '180px serif';
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText(emoji, size/2, size/2);
-  return new THREE.CanvasTexture(cnv);
-}
-
-function placeSprites() {
-  const radius = 2;
-  FLOWERS.forEach((f,i)=>{
-    const angle = i / FLOWERS.length * Math.PI * 2;
-    const tex = createEmoji(f.emoji);
-    const spr = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true}));
-    spr.position.set(Math.cos(angle)*radius, 0.4, Math.sin(angle)*radius);
-    spr.scale.set(1,1,1);
-    spr.userData = f;
-    scene.add(spr);
-    sprites.push(spr);
-  });
-}
-
-function focusFlower(id) {
-  const spr = sprites.find(s => s.userData.id === id);
-  if (!spr) return;
-  const p = spr.position.clone();
-  camera.position.set(p.x*1.6, 1.2, p.z*1.6);
-  controls.target.copy(p);
-}
-
-function animate(){
-  requestAnimationFrame(animate);
-  controls.update();
