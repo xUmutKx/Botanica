@@ -1,4 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D Botanical Prototype</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#000;color:#fff;font-family:Arial,system-ui;}
+  #app{display:flex;flex-direction:column;height:100vh;}
+  #viewer{flex:1;position:relative;}
+  canvas{width:100%;height:100%;display:block;}
+  #list{display:flex;gap:10px;padding:10px;overflow-x:auto;background:#111;}
+  .item{padding:8px 12px;border-radius:8px;background:#222;border:1px solid #333;cursor:pointer;text-align:center;}
+  @media(min-width:900px){#app{flex-direction:row;}#list{flex-direction:column;min-width:180px;height:100vh;}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="viewer"><canvas id="c"></canvas></div>
+  <div id="list"><div class="item">Rose</div></div>
+</div>
+
 <script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import { OBJLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
+import { MTLLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/MTLLoader.js';
+
+let renderer, scene, camera, controls, model;
+
+const canvas = document.getElementById('c');
+const folder = 'models/rose/'; // prototype with rose only
+
+function init(){
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  const vw=window.innerWidth, vh=window.innerHeight;
+  renderer.setSize(vw, Math.round(vh*0.7), false);
+
+  scene = new THREE.Scene();
+
+  camera = new THREE.PerspectiveCamera(45, vw/(Math.round(vh*0.7)), 0.1, 100);
+  camera.position.set(0,2,5);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+
+  const hemi = new THREE.HemisphereLight(0xffffff,0x222222,0.8);
+  scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff,0.5);
+  dir.position.set(5,5,5);
+  scene.add(dir);
+
+  // Ground plane
+  const texLoader = new THREE.TextureLoader();
+  texLoader.load('models/grass_texture225.jpg', tex=>{
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(20,20),
+      new THREE.MeshStandardMaterial({map:tex,roughness:1})
+    );
+    ground.rotation.x=-Math.PI/2;
+    scene.add(ground);
+  });
+
+  // Load rose OBJ+MTL
+  const mtlLoader = new MTLLoader();
+  mtlLoader.setPath(folder);
+  mtlLoader.load('rose.mtl', materials=>{
+    materials.preload();
+    const objLoader = new OBJLoader();
+    objLoader.setPath(folder);
+    objLoader.setMaterials(materials);
+    objLoader.load('rose.obj', obj=>{
+      model = obj;
+      model.scale.set(0.5,0.5,0.5);
+      scene.add(model);
+    }, undefined, err=>console.error('OBJ load failed:', err));
+  });
+
+  animate();
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  if(controls) controls.update();
+  renderer.render(scene,camera);
+}
+
+// Mobile resize
+window.addEventListener('resize', ()=>{
+  const vw=window.innerWidth, vh=window.innerHeight;
+  renderer.setSize(vw, Math.round(vh*0.7), false);
+  camera.aspect = vw/(Math.round(vh*0.7));
+  camera.updateProjectionMatrix();
+});
+
+init();
+</script>
+</body>
+</html><script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 import { OBJLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
@@ -52,70 +152,3 @@ async function init() {
 
 function loadFlowers(folders){
     const R = 3;
-    const mtlLoader = new MTLLoader();
-    const objLoader = new OBJLoader();
-
-    folders.forEach((name,i)=>{
-        const folderPath = `models/${name}/`;
-        // Try to load MTL
-        mtlLoader.setPath(folderPath);
-        objLoader.setPath(folderPath);
-
-        mtlLoader.load(`${name}.mtl`, (materials)=>{
-            materials.preload();
-            objLoader.setMaterials(materials);
-            objLoader.load(`${name}.obj`, (obj)=>{
-                const angle = i / folders.length * Math.PI*2;
-                obj.position.set(Math.cos(angle)*R,0,Math.sin(angle)*R);
-                obj.scale.set(0.5,0.5,0.5);
-                scene.add(obj);
-                models.push(obj);
-
-                addSidebarButton(name, models.length-1);
-            }, undefined, err=>console.error('OBJ load error:', err));
-        }, undefined, ()=>{
-            // If no MTL, load OBJ alone
-            objLoader.load(`${name}.obj`, (obj)=>{
-                const angle = i / folders.length * Math.PI*2;
-                obj.position.set(Math.cos(angle)*R,0,Math.sin(angle)*R);
-                obj.scale.set(0.5,0.5,0.5);
-                scene.add(obj);
-                models.push(obj);
-
-                addSidebarButton(name, models.length-1);
-            });
-        });
-    });
-}
-
-function addSidebarButton(name, index){
-    const b = document.createElement('div');
-    b.className='item';
-    b.textContent = name;
-    b.addEventListener('click', ()=> focusFlower(index));
-    list.appendChild(b);
-}
-
-function focusFlower(index){
-    const obj = models[index];
-    if(!obj) return;
-    controls.target.copy(obj.position);
-    camera.position.set(obj.position.x*1.5, obj.position.y+1.5, obj.position.z*1.5);
-}
-
-function animate(){
-    requestAnimationFrame(animate);
-    controls.update();
-    renderer.render(scene,camera);
-}
-
-window.addEventListener('resize', ()=>{
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const viewerHeight = (vw<900)? Math.round(vh*0.7): vh;
-    renderer.setSize(vw,viewerHeight,false);
-    camera.aspect = vw/viewerHeight;
-    camera.updateProjectionMatrix();
-});
-
-init();
-</script>
