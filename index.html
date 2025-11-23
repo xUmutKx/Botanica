@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Botanical 3D Viewer</title>
 <style>
-  html, body { margin:0; height:100%; background:#000; color:#fff; font-family: Arial, system-ui;}
+  html, body { margin:0; padding:0; height:100%; background:#000; color:#fff; font-family: Arial, system-ui; }
   #app { display:flex; flex-direction:column; height:100vh; }
   #viewer { flex:1; position:relative; }
-  canvas { width:100%; height:100%; display:block; }
+  canvas { display:block; }
   #buttonContainer { position:absolute; right:10px; bottom:10px; z-index:10; }
   #sorryBtn { background:#222; border:1px solid #555; padding:10px 12px; border-radius:8px; cursor:pointer; color:#fff; font-size:16px; }
-  #sorryOverlay { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; text-align:center; color:#fff; font-size:18px; padding:20px; box-sizing:border-box; display:none; z-index:999; }
+  #sorryOverlay { position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:flex; justify-content:center; align-items:center; text-align:center; color:#fff; font-size:18px; padding:20px; box-sizing:border-box; display:none; z-index:999; }
 </style>
 </head>
 <body>
@@ -29,25 +29,27 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { ObjViewer } from 'https://cdn.jsdelivr.net/gh/movabo/ObjViewer/js/ObjViewer.js';
 
+// ---- Canvas setup ----
 const canvas = document.getElementById('canvas');
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight * 0.7; // 70% height on mobile
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
-// ---- Load your rose folder as a prototype ----
-const files = [
-  'models/rose/rose.obj',
-  'models/rose/rose.mtl'
-];
+// ---- OBJ/MTL files ----
+const files = ['models/rose/rose.obj', 'models/rose/rose.mtl'];
 
-// Callbacks for viewer
-const callbacks = {
-  onLoad: ()=> console.log('Model loaded'),
-  onError: e=> console.error('Load error', e)
-};
-
-const viewer = new ObjViewer(THREE, canvas, files, callbacks);
+// ---- Create viewer ----
+const viewer = new ObjViewer(THREE, canvas, files, {
+  onLoad: ()=> console.log('Model loaded successfully'),
+  onError: e=> console.error('Error loading model:', e)
+});
 viewer.load();
 viewer.startAnimation();
 
-// ---- Sorry Mode Setup ----
+// ---- Sorry Mode ----
 const sorryBtn = document.getElementById('sorryBtn');
 const sorryOverlay = document.getElementById('sorryOverlay');
 const sorryMessage = document.getElementById('sorryMessage');
@@ -55,7 +57,6 @@ const sorryMessage = document.getElementById('sorryMessage');
 let clickCount = 0;
 const maxClicks = 22;
 
-// Your heartfelt sorry message
 const message = `I am truly sorry for all the moments I may have hurt or disappointed you. 
 I want you to know that you mean everything to me, and I deeply regret any pain I've caused. 
 I love you, and I promise to do better every single day.`;
@@ -68,10 +69,9 @@ sorryBtn.addEventListener('click', ()=>{
   }
 });
 
-// Hide overlay when clicked
 sorryOverlay.addEventListener('click', ()=>{
   sorryOverlay.style.display = 'none';
-  clickCount = 0; // reset
+  clickCount = 0; // reset counter
 });
 </script>
 </body>
